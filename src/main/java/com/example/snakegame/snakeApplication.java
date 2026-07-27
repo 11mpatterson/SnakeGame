@@ -41,6 +41,10 @@ public class snakeApplication extends Application
     private long effectExpiresAt = 0;
     private boolean paused = false;
     private String difficulty = "EASY";
+    private VBox gameOverBox;
+    private Label gameOverScoreLabel;
+    private Label gameOverHighScoreLabel;
+    private Label gameOverTitleLabel;
     public static class Corner
     {
         int x, y;
@@ -117,11 +121,34 @@ public class snakeApplication extends Application
 
         Canvas canvas = new Canvas(WIDTH * CORNER_SIZE, HEIGHT * CORNER_SIZE);
         GraphicsContext gc = canvas.getGraphicsContext2D();
+        // Game Over Overlay VBOX
+        gameOverBox = new VBox(15);
+        gameOverBox.setAlignment(Pos.CENTER);
+        gameOverBox.setStyle("-fx-background-color: rgba(0,0,0,0.7);");
+        gameOverTitleLabel = new Label("GAME OVER");
+        gameOverTitleLabel.setStyle("-fx-font-size: 28px; -fx-text-fill: red; -fx-font-weight: bold;");
+        gameOverScoreLabel = new Label();
+        gameOverScoreLabel.setStyle("-fx-font-size: 20px; -fx-text-fill: white; -fx-font-weight: bold;");
+        gameOverHighScoreLabel = new Label();
+        gameOverHighScoreLabel.setStyle("-fx-font-size: 20px; -fx-text-fill: white; -fx-font-weight: bold;");
+        gameOverBox.setVisible(false);
+        Button restartBtn = new Button("Restart");
+        Button menuBtn = new Button("Main Menu");
 
         StackPane root = new StackPane(canvas);
+        root.getChildren().add(gameOverBox);
+        gameOverBox.getChildren().addAll(gameOverTitleLabel, gameOverHighScoreLabel, gameOverScoreLabel, restartBtn, menuBtn);
         Scene scene = new Scene(root);
-
+        restartBtn.setOnAction(e -> {
+            restartGame();                 // reset snake & food
+            gameOverBox.setVisible(false);
+        });
+        menuBtn.setOnAction(e -> {
+            gameOverBox.setVisible(false);
+            primaryStage.setScene(menuScene); // switch to menu
+        });
         startBtn.setOnAction(e -> {
+            gameOverBox.setVisible(false);
             restartGame();                 // reset snake & food
             primaryStage.setScene(scene);  // switch to game
         });
@@ -250,6 +277,9 @@ public class snakeApplication extends Application
             }
         }
         if(gameOver){
+            gameOverScoreLabel.setText("Score: " + score);
+            gameOverHighScoreLabel.setText("High Score: " + highScore);
+            gameOverBox.setVisible(true);
             if (score > highScore) {
                 gameOverSound.play();
                 highScore = score;
@@ -257,7 +287,6 @@ public class snakeApplication extends Application
                 prefs.putInt("highScore", highScore);
 
             }
-
 
         }
         // Food Consumption
@@ -310,15 +339,8 @@ public class snakeApplication extends Application
 
     public void draw(GraphicsContext gc) {
         if (gameOver) {
-            gc.setFill(Color.rgb(0, 0, 0, 0.3));   // black with 70 % opacity
-            gc.fillRect(0, 0, WIDTH * CORNER_SIZE, HEIGHT * CORNER_SIZE);
-            gc.setFill(Color.RED);
+            gameOverBox.setVisible(true);
             activeEffect = null;
-
-            gc.fillText("Score: " + score, WIDTH * CORNER_SIZE / 3.0, HEIGHT * CORNER_SIZE / 2.5);
-            gc.fillText("High Score: " + highScore, WIDTH * CORNER_SIZE / 3.0, HEIGHT * CORNER_SIZE / 2.9);
-            gc.fillText("GAME OVER. Press R to restart", WIDTH * CORNER_SIZE / 3.0, HEIGHT * CORNER_SIZE / 2.2);
-            gc.fillText("Press ESC to go back to Menu", WIDTH * CORNER_SIZE / 3.0, HEIGHT * CORNER_SIZE / 1.2);
             return;
         }
 
