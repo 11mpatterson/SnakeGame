@@ -1,4 +1,7 @@
 package com.example.snakegame;
+import javafx.application.Platform;
+import javafx.scene.control.TextInputDialog;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Slider;
 import javafx.animation.AnimationTimer;
 import javafx.application.Application;
@@ -65,6 +68,58 @@ public class snakeApplication extends Application
     private Corner golden = null;
     private long goldenExpiresAt = 0;
     private int goldenMoveCounter = 0;
+    // Skins
+    private int currentSkin = 0;
+    private boolean[] unlockedSkins = {true, false, false, false}; // index 0 always free
+
+    // Leaderboard
+    private static class LeaderboardEntry {
+        String name;
+        int score;
+        long time;
+        String difficulty;
+        LeaderboardEntry(String n, int s, long t, String d) {
+            name = n; score = s; time = t; difficulty = d;
+        }
+    }
+    private final List<LeaderboardEntry> leaderboard = new ArrayList<>();
+    private void loadLeaderboard(Preferences prefs) {
+        leaderboard.clear();
+        String data = prefs.get("leaderboard", "");
+        if (data.isEmpty()) return;
+        for (String part : data.split(";")) {
+            String[] f = part.split("\\|");
+            if (f.length == 4) {
+                try {
+                    leaderboard.add(new LeaderboardEntry(
+                            f[0], Integer.parseInt(f[1]),
+                            Long.parseLong(f[2]), f[3]));
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+    }
+
+    private void saveLeaderboard(Preferences prefs) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < leaderboard.size(); i++) {
+            LeaderboardEntry e = leaderboard.get(i);
+            if (i > 0) sb.append(";");
+            sb.append(e.name).append("|").append(e.score)
+                    .append("|").append(e.time).append("|").append(e.difficulty);
+        }
+        prefs.put("leaderboard", sb.toString());
+        try { prefs.flush(); } catch (Exception ignored) {}
+    }
+
+
+    // head colour, body colour
+    private static final String[][] SKINS = {
+            {"#3fb950", "#238636"}, // 0 Default green
+            {"#58a6ff", "#1f6feb"}, // 1 Blue  – unlock at 20
+            {"#d2a8ff", "#a371f7"}, // 2 Purple – unlock at 50
+            {"#ff7b72", "#da3633"}  // 3 Red   – unlock at 100
+    };
+    private static final int[] UNLOCK_AT = {0, 20, 50, 100};
 
     private long getElapsedSeconds() {
         if (startTimeNanos == 0) return 0;
@@ -114,8 +169,6 @@ public class snakeApplication extends Application
 
     @Override
     public void start(Stage primaryStage) {
-
-
         // Game Over Overlay VBOX
         gameOverBox = new VBox(15);
         gameOverBox.setAlignment(Pos.CENTER);
@@ -161,7 +214,9 @@ public class snakeApplication extends Application
 
         Preferences prefs = Preferences.userNodeForPackage(snakeApplication.class);
         highScore = prefs.getInt("highScore", 0);
-        Label highScoreLabel = new Label("High Score: " + highScore);
+        highScoreTime = prefs.getLong("highScoreTime", 0);
+        highScoreDifficulty = prefs.get("highScoreDifficulty", "EASY");
+        highScoreLabel = new Label("High Score: " + highScore + " (" + highScoreTime + "s " + highScoreDifficulty + ")");
         highScoreLabel.setStyle("-fx-font-size: 18px;");
 
         highScoreTime = prefs.getLong("highScoreTime", 0);
@@ -169,9 +224,37 @@ public class snakeApplication extends Application
         highScoreLabel = new Label("High Score: " + highScore + " (" + highScoreTime + "s " + highScoreDifficulty + ")");
         highScoreLabel.setStyle("-fx-font-size: 18px;");
 
+        currentSkin = prefs.getInt("currentSkin", 0);
+        String unlocked = prefs.get("unlockedSkins", "0");
+        loadLeaderboard(prefs);
+
+        for (String s : unlocked.split(",")) {
+            try {
+                int idx = Integer.parseInt(s.trim());
+                if (idx >= 0 && idx < unlockedSkins.length) unlockedSkins[idx] = true;
+            } catch (NumberFormatException ignored) {}
+        }
+        // unlock skins based on already-saved high score
+        boolean changed = false;
+        for (int i = 0; i < UNLOCK_AT.length; i++) {
+            if (highScore >= UNLOCK_AT[i] && !unlockedSkins[i]) {
+                unlockedSkins[i] = true;
+                changed = true;
+            }
+        }
+        if (changed) {
+            StringBuilder sb = new StringBuilder("0");
+            for (int i = 1; i < unlockedSkins.length; i++) {
+                if (unlockedSkins[i]) sb.append(",").append(i);
+            }
+            prefs.put("unlockedSkins", sb.toString());
+            try { prefs.flush(); } catch (Exception ignored) {}
+        }
         title.setStyle("-fx-font-size: 36px; -fx-font-weight: bold;");
         Button startBtn = new Button("Start");
         Button difficultyBtn = new Button("Difficulty: " + difficulty);
+        Button skinBtn = new Button("Skin: " + currentSkin);
+        Button leaderboardBtn = new Button("Leaderboard");
         Button quitBtn = new Button("Quit");
         Slider volumeSlider = new Slider(0, 1, 0.3);
         volumeSlider.setShowTickLabels(true);
@@ -184,7 +267,41 @@ public class snakeApplication extends Application
             if (powerSound != null) powerSound.setVolume(newVal.doubleValue());
         });
 
-        menuRoot.getChildren().addAll(highScoreLabel, title, startBtn, difficultyBtn, volumeSlider, quitBtn);
+        leaderboardBtn.setOnAction(e -> {
+            StringBuilder text = new StringBuilder();
+            if (leaderboard.isEmpty()) {
+                text.append("No entries yet.");
+            } else {
+                for (int i = 0; i < leaderboard.size(); i++) {
+                    LeaderboardEntry entry = leaderboard.get(i);
+                    text.append((i + 1)).append(". ")
+                            .append(entry.name).append("  –  ")
+                            .append(entry.score).append(" pts  (")
+                            .append(entry.time).append("s ")
+                            .append(entry.difficulty).append(")\n");
+                }
+            }
+            Alert alert = new Alert(Alert.AlertType.INFORMATION);
+            alert.setTitle("Leaderboard");
+            alert.setHeaderText("Top 5");
+            alert.setContentText(text.toString());
+            alert.showAndWait();
+        });
+
+        skinBtn.setOnAction(e -> {
+            // cycle to next unlocked skin
+            do {
+                currentSkin = (currentSkin + 1) % SKINS.length;
+            } while (!unlockedSkins[currentSkin]);
+            skinBtn.setText("Skin: " + currentSkin);
+            Preferences p = Preferences.userNodeForPackage(snakeApplication.class);
+            p.putInt("currentSkin", currentSkin);
+            try { p.flush(); } catch (Exception ignored) {}
+        });
+
+
+        menuRoot.getChildren().addAll(highScoreLabel, title, startBtn, difficultyBtn, volumeSlider,
+                skinBtn, leaderboardBtn, quitBtn);
         Scene menuScene = new Scene(menuRoot, WIDTH * CORNER_SIZE, HEIGHT * CORNER_SIZE);
 
         var url = getClass().getResource("/bgmusic.mp3");
@@ -353,13 +470,53 @@ public class snakeApplication extends Application
                 prefs.putInt("highScore", highScore);
                 prefs.putLong("highScoreTime", highScoreTime);
                 prefs.put("highScoreDifficulty", highScoreDifficulty);
+
+                // unlock any newly earned skins
+                boolean changed = false;
+                for (int i = 0; i < UNLOCK_AT.length; i++) {
+                    if (highScore >= UNLOCK_AT[i] && !unlockedSkins[i]) {
+                        unlockedSkins[i] = true;
+                        changed = true;
+                    }
+                }
+                if (changed) {
+                    StringBuilder sb = new StringBuilder("0");
+                    for (int i = 1; i < unlockedSkins.length; i++) {
+                        if (unlockedSkins[i]) sb.append(",").append(i);
+                    }
+                    prefs.put("unlockedSkins", sb.toString());
+                }
                 try { prefs.flush(); } catch (Exception ignored) {}
                 if (gameOverSound != null) gameOverSound.play();
                 highScoreLabel.setText("High Score: " + highScore + " (" + highScoreTime + "s " + highScoreDifficulty + ")");
             }
+            // Leaderboard check
+            boolean qualifies = leaderboard.size() < 5 || score > leaderboard.get(leaderboard.size() - 1).score;
+            if (qualifies) {
+                final long finalTimeCopy = finalTime;   // needed for the lambda
+                final int scoreCopy = score;
+                final String diffCopy = difficulty;
+
+                Platform.runLater(() -> {
+                    TextInputDialog dialog = new TextInputDialog("Player");
+                    dialog.setTitle("New High Score!");
+                    dialog.setHeaderText("You made the top 5!");
+                    dialog.setContentText("Enter your name:");
+                    dialog.showAndWait().ifPresent(name -> {
+                        if (name.isBlank()) name = "Player";
+                        if (name.length() > 12) name = name.substring(0, 12);
+                        leaderboard.add(new LeaderboardEntry(name, scoreCopy, finalTimeCopy, diffCopy));
+                        leaderboard.sort((a, b) -> Integer.compare(b.score, a.score));
+                        if (leaderboard.size() > 5) leaderboard.subList(5, leaderboard.size()).clear();
+                        Preferences p = Preferences.userNodeForPackage(snakeApplication.class);
+                        saveLeaderboard(p);
+                    });
+                });
+            }
             gameOverScoreLabel.setText("Score: " + score + "   Time: " + finalTime + "s");
             gameOverHighScoreLabel.setText("High Score: " + highScore + " (" + highScoreTime + "s " + highScoreDifficulty + ")");
             gameOverBox.setVisible(true);
+
         }
         // Food Consumption
         if (head.x == food.x && head.y == food.y) {
@@ -553,7 +710,7 @@ public class snakeApplication extends Application
                 double dx = curr.x - prev.x;
                 double dy = curr.y - prev.y;
 
-                // wrap detected → snap, no long animation
+                // wrap detected = snap, no long animation
                 if (Math.abs(dx) > 1) {
                     visX = curr.x;
                 } else {
@@ -566,18 +723,19 @@ public class snakeApplication extends Application
                     visY = prev.y + dy * progress;
                 }
             }
-
+            String headCol = SKINS[currentSkin][0];
+            String bodyCol = SKINS[currentSkin][1];
             if (i == 0) { // head – drawn last
-                if (activeEffect == null) gc.setFill(Color.web("#3fb950"));
+                if (activeEffect == null) gc.setFill(Color.web(headCol));
                 else if ("SPEED".equals(activeEffect)) gc.setFill(Color.WHITE);
-                else gc.setFill(Color.web("#56d364"));
+                else gc.setFill(Color.GRAY);
                 gc.fillRoundRect(visX * CORNER_SIZE + 1, visY * CORNER_SIZE + HUD_HEIGHT + 1,
                         CORNER_SIZE - 2, CORNER_SIZE - 2, 8, 8);
                 gc.setFill(Color.BLACK);
                 gc.fillOval(visX * CORNER_SIZE + 5, visY * CORNER_SIZE + HUD_HEIGHT + 5, 3, 3);
                 gc.fillOval(visX * CORNER_SIZE + 12, visY * CORNER_SIZE + HUD_HEIGHT + 5, 3, 3);
             } else {
-                gc.setFill(Color.web("#238636"));
+                gc.setFill(Color.web(bodyCol));
                 gc.fillRoundRect(visX * CORNER_SIZE + 2, visY * CORNER_SIZE + HUD_HEIGHT + 2,
                         CORNER_SIZE - 4, CORNER_SIZE - 4, 6, 6);
             }
