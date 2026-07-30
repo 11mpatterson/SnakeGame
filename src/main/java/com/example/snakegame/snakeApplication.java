@@ -34,6 +34,8 @@ public class snakeApplication extends Application
     private static final int CORNER_SIZE = 19; // Size of each grid square in pixels
 
     // Game Variables
+    private Stage primaryStage;
+    private Scene gameScene;
     private static final int HUD_HEIGHT = 50;
     private final List<Corner> snake = new ArrayList<>();
     private Direction direction = Direction.RIGHT;
@@ -169,6 +171,7 @@ public class snakeApplication extends Application
 
     @Override
     public void start(Stage primaryStage) {
+        this.primaryStage = primaryStage;
         // Game Over Overlay VBOX
         gameOverBox = new VBox(15);
         gameOverBox.setAlignment(Pos.CENTER);
@@ -190,7 +193,7 @@ public class snakeApplication extends Application
         root.getChildren().add(gameOverBox);
 
         Scene scene = new Scene(root, DESIGN_W, DESIGN_H);
-
+        gameScene = scene;   // the one that contains the canvas
         // make it fill the window
         canvas.widthProperty().bind(root.widthProperty());
         canvas.heightProperty().bind(root.heightProperty());
@@ -491,13 +494,15 @@ public class snakeApplication extends Application
                 highScoreLabel.setText("High Score: " + highScore + " (" + highScoreTime + "s " + highScoreDifficulty + ")");
             }
             // Leaderboard check
-            boolean qualifies = leaderboard.size() < 5 || score > leaderboard.get(leaderboard.size() - 1).score;
+            boolean qualifies = leaderboard.size() < 5 || score > leaderboard.get(leaderboard.size() - 1).score && score > 0;
             if (qualifies) {
                 final long finalTimeCopy = finalTime;   // needed for the lambda
                 final int scoreCopy = score;
                 final String diffCopy = difficulty;
 
                 Platform.runLater(() -> {
+                    if (primaryStage.getScene() != gameScene) return;   // user already left
+
                     TextInputDialog dialog = new TextInputDialog("Player");
                     dialog.setTitle("New High Score!");
                     dialog.setHeaderText("You made the top 5!");
