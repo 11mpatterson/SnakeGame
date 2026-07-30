@@ -20,6 +20,7 @@ import java.util.Random;
 import java.util.prefs.Preferences;
 import javafx.scene.media.Media;
 import javafx.scene.media.MediaPlayer;
+
 public class snakeApplication extends Application
 {
     // Grid Configuration
@@ -30,6 +31,7 @@ public class snakeApplication extends Application
     // Game Variables
     private final List<Corner> snake = new ArrayList<>();
     private Direction direction = Direction.RIGHT;
+    private Direction nextDirection = Direction.RIGHT;
     private Corner food;
     private boolean gameOver = false;
     private final Random random = new Random();
@@ -178,10 +180,10 @@ public class snakeApplication extends Application
         // Handle inputs
         scene.setOnKeyPressed(event -> {
             KeyCode code = event.getCode();
-            if (code == KeyCode.UP && direction != Direction.DOWN) direction = Direction.UP;
-            if (code == KeyCode.DOWN && direction != Direction.UP) direction = Direction.DOWN;
-            if (code == KeyCode.LEFT && direction != Direction.RIGHT) direction = Direction.LEFT;
-            if (code == KeyCode.RIGHT && direction != Direction.LEFT) direction = Direction.RIGHT;
+            if (code == KeyCode.UP && direction != Direction.DOWN) nextDirection = Direction.UP;
+            if (code == KeyCode.DOWN && direction != Direction.UP) nextDirection = Direction.DOWN;
+            if (code == KeyCode.LEFT && direction != Direction.RIGHT) nextDirection = Direction.LEFT;
+            if (code == KeyCode.RIGHT && direction != Direction.LEFT) nextDirection = Direction.RIGHT;
             if (code == KeyCode.R && gameOver) restartGame();
             if (code == KeyCode.ESCAPE) primaryStage.setScene(menuScene);
             if (code == KeyCode.SPACE) {
@@ -256,7 +258,7 @@ public class snakeApplication extends Application
             snake.get(i).x = snake.get(i - 1).x;
             snake.get(i).y = snake.get(i - 1).y;
         }
-
+        direction = nextDirection;
         // Move head
         Corner head = snake.get(0);
         switch (direction) {
@@ -287,22 +289,23 @@ public class snakeApplication extends Application
                 }
             }
         }
-        if(gameOver){
-            gameOverScoreLabel.setText("Score: " + score);
-            gameOverHighScoreLabel.setText("High Score: " + highScore);
-            gameOverBox.setVisible(true);
+        if (gameOver) {
             if (score > highScore) {
-                gameOverSound.play();
                 highScore = score;
                 Preferences prefs = Preferences.userNodeForPackage(snakeApplication.class);
                 prefs.putInt("highScore", highScore);
-
+                try {
+                    prefs.flush();   // force write to disk
+                } catch (Exception ignored) {}
+                if (gameOverSound != null) gameOverSound.play();
             }
-
+            gameOverScoreLabel.setText("Score: " + score);
+            gameOverHighScoreLabel.setText("High Score: " + highScore);
+            gameOverBox.setVisible(true);
         }
         // Food Consumption
         if (head.x == food.x && head.y == food.y) {
-            eatSound.play();
+            if(eatSound != null) eatSound.play();
             snake.add(new Corner(-1, -1)); // Add temporary dummy tail
             score += 1;
             newFood();
@@ -314,7 +317,7 @@ public class snakeApplication extends Application
             activePowerUp = new PowerUp(x, y, type, 5_000_000_000L); // 5 secs
         }
         if (activePowerUp != null && head.x == activePowerUp.x && head.y == activePowerUp.y) {
-            powerSound.play();
+            if(powerSound != null) powerSound.play();
             activeEffect = activePowerUp.type;
             effectExpiresAt = System.nanoTime() + 10_000_000_000L; // 5 seconds from now
             activePowerUp = null; // remove from map
@@ -415,6 +418,8 @@ public class snakeApplication extends Application
     }
 
     private void restartGame() {
+        direction = Direction.RIGHT;
+        nextDirection = Direction.RIGHT;
         score = 0;
         snake.clear();
         snake.add(new Corner(WIDTH / 2, HEIGHT / 2));
